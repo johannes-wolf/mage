@@ -13,6 +13,7 @@ import mage.abilities.effects.OneShotEffect;
 import mage.abilities.effects.common.DestroyTargetEffect;
 import mage.abilities.effects.common.DoWhenCostPaid;
 import mage.abilities.effects.common.LoseLifeOpponentsEffect;
+import mage.abilities.hint.ValueHint;
 import mage.cards.CardImpl;
 import mage.cards.CardSetInfo;
 import mage.constants.*;
@@ -35,7 +36,7 @@ import java.util.UUID;
  */
 public final class GristTheHungerTide extends CardImpl {
 
-    private static final DynamicValue xValue = new CardsInControllerGraveyardCount(StaticFilters.FILTER_CARD_CREATURES);
+    private static final DynamicValue creatureCardsInGraveyard = new CardsInControllerGraveyardCount(StaticFilters.FILTER_CARD_CREATURES);
 
     public GristTheHungerTide(UUID ownerId, CardSetInfo setInfo) {
         super(ownerId, setInfo, new CardType[]{CardType.PLANESWALKER}, "{1}{B}{G}");
@@ -61,7 +62,9 @@ public final class GristTheHungerTide extends CardImpl {
         ), -2));
 
         // −5: Each opponent loses life equal to the number of creature cards in your graveyard.
-        this.addAbility(new LoyaltyAbility(new LoseLifeOpponentsEffect(xValue).setText("each opponent loses life equal to the number of creature cards in your graveyard"), -5));
+        this.addAbility(new LoyaltyAbility(new LoseLifeOpponentsEffect(creatureCardsInGraveyard)
+                .setText("each opponent loses life equal to the number of creature cards in your graveyard"), -5)
+                .addHint(new ValueHint("Creature cards in your graveyard", creatureCardsInGraveyard)));
     }
 
     private GristTheHungerTide(final GristTheHungerTide card) {
