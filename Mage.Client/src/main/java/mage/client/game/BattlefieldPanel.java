@@ -292,10 +292,13 @@ public class BattlefieldPanel extends javax.swing.JLayeredPane {
         // perm.setCardBounds
 
         permanents.put(permanent.getId(), perm);
-
         this.jPanel.add(perm, (Integer) 10);
+        perm.setAlpha(0f);
         moveToFront(jPanel);
-        Plugins.instance.onAddCard(perm, 1);
+
+        Plugins.instance.onAddCard(perm, 1).thenRun(() -> {
+            perm.setAlpha(1f);
+        });
 
         if (permanent.isArtifact()) {
             addedArtifact = true;
@@ -313,12 +316,14 @@ public class BattlefieldPanel extends javax.swing.JLayeredPane {
                 if (mageCard.getMainPanel() instanceof MagePermanent) {
                     MagePermanent magePermanent = (MagePermanent) mageCard.getMainPanel();
                     if (magePermanent.getOriginal().getId().equals(permanentId)) {
-                        Thread t = new Thread(() -> {
-                            Plugins.instance.onRemoveCard(mageCard, count);
+                        Plugins.instance.onRemoveCard(mageCard, count).thenRun(() -> {
                             mageCard.setVisible(false);
-                            this.jPanel.remove(mageCard);
+                            if (mageCard.getParent() == jPanel) {
+                                jPanel.remove(mageCard);
+                                jPanel.revalidate();
+                                jPanel.repaint();
+                            }
                         });
-                        t.start();
                     }
                     if (magePermanent.getOriginal().isCreature()) {
                         removedCreature = true;

@@ -6,10 +6,14 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.CompletableFuture;
 
 public abstract class Animation {
 
     private static final boolean ENABLED = true;
+
+    /** Maximum duration a card fade-in/out animation takes in milliseconds. */
+    private static final long CARD_FADE_MAX_MSEC = 600;
 
     private static final long TARGET_MILLIS_PER_FRAME = 30;
 
@@ -34,6 +38,8 @@ public abstract class Animation {
                 //update(1.0f);
                 end();
             });
+
+            timerTask = null;
             return;
         }
 
@@ -366,34 +372,45 @@ public abstract class Animation {
         }
     }
 
-    public static void showCard(final MageCard card, int count) {
+    public static CompletableFuture<Void> showCard(final MageCard card, int count) {
         if (count == 0) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
-        new Animation(600 / count) {
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        new Animation(CARD_FADE_MAX_MSEC / count) {
             @Override
-            protected void start() {
-            }
+            protected void start() {}
 
             @Override
             protected void update(float percentage) {
                 float alpha = percentage;
-                card.setAlpha(alpha);
-                card.repaint();
+                UI.invokeLater(() -> {
+                    card.setAlpha(alpha);
+                    card.repaint();
+                });
             }
 
             @Override
             protected void end() {
-                card.setAlpha(1.f);
+                UI.invokeLater(() -> {
+                    card.setAlpha(1.f);
+                    card.repaint();
+                    future.complete(null);
+                });
             }
         };
+
+        return future;
     }
 
-    public static void hideCard(final MageCard card, int count) {
+    public static CompletableFuture<Void> hideCard(final MageCard card, int count) {
         if (count == 0) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
-        new Animation(600 / count) {
+
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        new Animation(CARD_FADE_MAX_MSEC / count) {
             @Override
             protected void start() {
             }
@@ -401,14 +418,22 @@ public abstract class Animation {
             @Override
             protected void update(float percentage) {
                 float alpha = 1 - percentage;
-                card.setAlpha(alpha);
-                card.repaint();
+                UI.invokeLater(() -> {
+                    card.setAlpha(alpha);
+                    card.repaint();
+                });
             }
 
             @Override
             protected void end() {
-                card.setAlpha(0f);
+                UI.invokeLater(() -> {
+                    card.setAlpha(0f);
+                    card.repaint();
+                    future.complete(null);
+                });
             }
         };
+
+        return future;
     }
 }

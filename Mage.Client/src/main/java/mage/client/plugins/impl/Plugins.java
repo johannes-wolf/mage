@@ -26,10 +26,10 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static org.mage.plugins.card.utils.CardImageUtils.getImagesDir;
 
@@ -186,17 +186,21 @@ public enum Plugins implements MagePlugins {
     }
 
     @Override
-    public void onAddCard(MageCard card, int count) {
+    public CompletableFuture<Void> onAddCard(MageCard card, int count) {
         if (this.cardPlugin != null) {
-            this.cardPlugin.onAddCard(card, count);
+            return this.cardPlugin.onAddCard(card, count);
         }
+
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onRemoveCard(MageCard card, int count) {
+    public CompletableFuture<Void> onRemoveCard(MageCard card, int count) {
         if (this.cardPlugin != null) {
-            this.cardPlugin.onRemoveCard(card, count);
+            return this.cardPlugin.onRemoveCard(card, count);
         }
+
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
