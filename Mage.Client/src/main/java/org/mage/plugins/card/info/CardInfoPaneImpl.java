@@ -2,7 +2,6 @@ package org.mage.plugins.card.info;
 
 import java.awt.Component;
 import javax.swing.JEditorPane;
-import javax.swing.SwingUtilities;
 import mage.client.util.GUISizeHelper;
 import mage.client.util.gui.GuiDisplayUtil;
 import mage.client.util.gui.GuiDisplayUtil.TextLines;
@@ -24,11 +23,8 @@ public class CardInfoPaneImpl extends JEditorPane implements CardInfoPane {
 
     public static final int TOOLTIP_BORDER_WIDTH = 80;
 
-    private int type;
-
     private int addWidth;
     private int addHeight;
-    private boolean setSize = false;
 
     public CardInfoPaneImpl() {
         UI.setHTMLEditorKit(this);
@@ -45,20 +41,18 @@ public class CardInfoPaneImpl extends JEditorPane implements CardInfoPane {
     private void setGUISize() {
         addWidth = GUISizeHelper.cardTooltipLargeTextWidth;
         addHeight = GUISizeHelper.cardTooltipLargeTextHeight;
-        setSize = true;
     }
 
     @Override
     public void setCard(final CardView card, final Component container) {
         try {
-            SwingUtilities.invokeLater(() -> {
+            UI.invokeAndWait(() -> {
                 TextLines textLines = GuiDisplayUtil.getTextLinesfromCardView(card);
                 StringBuilder buffer = GuiDisplayUtil.getRulesFromCardView(card, textLines);
-                resizeTooltipIfNeeded(container, textLines.getBasicTextLength(), textLines.getLines().size());
                 setText(buffer.toString());
+                resizeTooltipIfNeeded(container, textLines.getBasicTextLength(), textLines.getLines().size());
                 setCaretPosition(0);
             });
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -69,30 +63,18 @@ public class CardInfoPaneImpl extends JEditorPane implements CardInfoPane {
         if (container == null) {
             return;
         }
+
         boolean makeBig = (rules > 5 || ruleLength > 350);
-        if (setSize) {
-            if (makeBig) {
-                type = 0;
-            } else {
-                type = 1;
-            }
-        }
-        if (makeBig && type == 0) {
-            type = 1;
-            container.setSize(
-                    addWidth + TOOLTIP_WIDTH_MIN + TOOLTIP_BORDER_WIDTH,
-                    addHeight + TOOLTIP_HEIGHT_MAX + TOOLTIP_BORDER_WIDTH
-            );
+        if (makeBig) {
+            container.setSize(addWidth + TOOLTIP_WIDTH_MIN + TOOLTIP_BORDER_WIDTH,
+                              addHeight + TOOLTIP_HEIGHT_MAX + TOOLTIP_BORDER_WIDTH);
             this.setSize(addWidth + TOOLTIP_WIDTH_MIN,
-                    addHeight + TOOLTIP_HEIGHT_MAX);
-        } else if (!makeBig && type == 1) {
-            type = 0;
-            container.setSize(
-                    addWidth + TOOLTIP_WIDTH_MIN + TOOLTIP_BORDER_WIDTH,
-                    addHeight + TOOLTIP_HEIGHT_MIN + TOOLTIP_BORDER_WIDTH
-            );
+                         addHeight + TOOLTIP_HEIGHT_MAX);
+        } else {
+            container.setSize(addWidth + TOOLTIP_WIDTH_MIN + TOOLTIP_BORDER_WIDTH,
+                              addHeight + TOOLTIP_HEIGHT_MIN + TOOLTIP_BORDER_WIDTH);
             this.setSize(addWidth + TOOLTIP_WIDTH_MIN,
-                    addHeight + TOOLTIP_HEIGHT_MIN);
+                         addHeight + TOOLTIP_HEIGHT_MIN);
         }
     }
 }
