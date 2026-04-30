@@ -87,9 +87,18 @@ public final class GUISizeHelper {
      * Reset all caches and reload all GUI with actual settings.
      * Use it after GUI settings change like colors/fonts/sizes.
      *
-     * @param reloadTheme use it after theme changes only
+     * This function is safe to call outsides the EDT!
+     *
+     * @param reloadTheme Use it after theme changes only
      */
     public static void refreshGUIAndCards(boolean reloadTheme) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> {
+                GUISizeHelper.refreshGUIAndCards(reloadTheme);
+            });
+            return;
+        }
+
         calculateGUISizes();
         if (reloadTheme) {
             GuiDisplayUtil.refreshThemeSettings();
