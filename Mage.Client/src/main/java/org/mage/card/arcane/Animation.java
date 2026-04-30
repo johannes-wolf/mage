@@ -4,30 +4,32 @@ import mage.cards.MageCard;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.concurrent.CompletableFuture;
 
 public abstract class Animation {
 
     private static final boolean ENABLED = true;
 
-    private static final long TARGET_MILLIS_PER_FRAME = 30;
+    private static final long TRANSFORM_CARD_DURATION_MS = 600;
+    private static final long CARD_SHOW_HIDE_DURATION_MS = 250;
+    private static final long CARD_TAP_DURATION_MS = 300;
 
-    private static final Timer timer = new Timer("Animation", true);
+    private static final long TARGET_MILLIS_PER_FRAME = 30;
 
     private static CardPanel enlargedCardPanel;
     private static CardPanel enlargedAnimationPanel;
     private static final Object enlargeLock = new Object();
 
-    private final TimerTask timerTask;
+    private final Timer animationTimer;
     private FrameTimer frameTimer;
     private long elapsed;
+    private boolean finished;
 
     public Animation(final long duration) {
         this(duration, 0);
     }
 
-    public Animation(final long duration, long delay) {
+    public Animation(long duration, long delay) {
         if (!ENABLED) {
             UI.invokeLater(() -> {
                 start();
@@ -35,42 +37,57 @@ public abstract class Animation {
                 end();
             });
 
-            timerTask = null;
+            animationTimer = null;
             return;
         }
 
-        timerTask = new TimerTask() {
-            @Override
-            public void run() {
-                if (frameTimer == null) {
-                    start();
-                    frameTimer = new FrameTimer();
-                }
-                elapsed += frameTimer.getTimeSinceLastFrame();
-                if (elapsed >= duration) {
-                    cancel();
-                    elapsed = duration;
-                }
-                update(elapsed / (float) duration);
-                if (elapsed == duration) {
-                    end();
-                }
+        final long safeDuration = Math.max(1, duration);
+        animationTimer = new Timer((int) TARGET_MILLIS_PER_FRAME, e -> {
+            if (finished) {
+                return;
             }
-        };
-        timer.scheduleAtFixedRate(timerTask, delay, TARGET_MILLIS_PER_FRAME);
+
+            if (frameTimer == null) {
+                start();
+                frameTimer = new FrameTimer();
+            }
+
+            elapsed += frameTimer.getTimeSinceLastFrame();
+            if (elapsed >= safeDuration) {
+                elapsed = safeDuration;
+            }
+
+            update(elapsed / (float) safeDuration);
+
+            if (elapsed == safeDuration) {
+                finish();
+            }
+        });
+        animationTimer.setInitialDelay((int) Math.max(0, delay));
+        animationTimer.start();
     }
 
     protected abstract void update(float percentage);
 
     protected void cancel() {
-        timerTask.cancel();
-        end();
+        finish();
     }
 
     protected void start() {
     }
 
     protected void end() {
+    }
+
+    private void finish() {
+        if (finished) {
+            return;
+        }
+        finished = true;
+        if (animationTimer != null) {
+            animationTimer.stop();
+        }
+        end();
     }
 
     /**
@@ -122,7 +139,7 @@ public abstract class Animation {
         CardPanel mainPanel = source;
         MageCard parentPanel = mainPanel.getTopPanelRef();
 
-        new Animation(300) {
+        new Animation(CARD_TAP_DURATION_MS) {
             @Override
             protected void start() {
                 parentPanel.onBeginAnimation();
@@ -160,12 +177,14 @@ public abstract class Animation {
         };
     }
 
-    public static void transformCard(final CardPanel source) {
+    public static CompletableFuture<Void> transformCard(final CardPanel source) {
 
         CardPanel mainPanel = source;
         MageCard parentPanel = mainPanel.getTopPanelRef();
 
-        new Animation(600) {
+        CompletableFuture<Void> done = new CompletableFuture<Void>();
+
+        new Animation(TRANSFORM_CARD_DURATION_MS) {
             private boolean state = false;
 
             @Override
@@ -201,8 +220,11 @@ public abstract class Animation {
 
                 parentPanel.onEndAnimation();
                 parentPanel.repaint();
+                done.complete(null);
             }
         };
+
+        return done;
     }
 
     public static void moveCardToPlay(final int startX, final int startY, final int startWidth, final int endX, final int endY,
@@ -368,49 +390,50 @@ public abstract class Animation {
         }
     }
 
-    public static void showCard(final MageCard card, int count) {
-        if (count == 0) {
-            return;
-        }
-        new Animation(600 / count) {
+    /**
+     * Schedule a linear alpha-fade animation for a card.
+     *
+     * @param card The card to animate
+     * @param durationMs Duration in milliseconds
+     * @param from Starting alpha value
+     * @param to Destination alpha value
+     * @return A future object that gets completed when the animation is done
+     */
+    static private CompletableFuture<Void> linearFade(final MageCard card, long durationMs, float from, float to) {
+        if (card == null || from == to)
+            return CompletableFuture.completedFuture(null);
+
+        CompletableFuture<Void> done = new CompletableFuture<Void>();
+
+        new Animation(durationMs) {
             @Override
             protected void start() {
+                card.setAlpha(from);
+                card.repaint();
             }
 
             @Override
             protected void update(float percentage) {
-                float alpha = percentage;
-                card.setAlpha(alpha);
+                card.setAlpha(from + percentage * (to - from));
                 card.repaint();
             }
 
             @Override
             protected void end() {
-                card.setAlpha(1.f);
+                card.setAlpha(to);
+                card.repaint();
+                done.complete(null);
             }
         };
+
+        return done;
     }
 
-    public static void hideCard(final MageCard card, int count) {
-        if (count == 0) {
-            return;
-        }
-        new Animation(600 / count) {
-            @Override
-            protected void start() {
-            }
+    public static CompletableFuture<Void> showCard(final MageCard card) {
+        return linearFade(card, CARD_SHOW_HIDE_DURATION_MS, 0f, 1f);
+    }
 
-            @Override
-            protected void update(float percentage) {
-                float alpha = 1 - percentage;
-                card.setAlpha(alpha);
-                card.repaint();
-            }
-
-            @Override
-            protected void end() {
-                card.setAlpha(0f);
-            }
-        };
+    public static CompletableFuture<Void> hideCard(final MageCard card) {
+        return linearFade(card, CARD_SHOW_HIDE_DURATION_MS, 1f, 0f);
     }
 }
