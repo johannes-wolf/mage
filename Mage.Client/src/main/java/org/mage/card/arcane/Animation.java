@@ -34,6 +34,8 @@ public abstract class Animation {
                 //update(1.0f);
                 end();
             });
+
+            timerTask = null;
             return;
         }
 
