@@ -1,9 +1,12 @@
 package org.mage.card.arcane;
 
+import mage.cards.Card;
 import mage.cards.MageCard;
 
 import javax.swing.*;
+import javax.swing.Timer;
 import java.awt.*;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 public abstract class Animation {
@@ -20,16 +23,33 @@ public abstract class Animation {
     private static CardPanel enlargedAnimationPanel;
     private static final Object enlargeLock = new Object();
 
+    /**
+     * Global registry of all running animations with a non-null target.
+     * This registry is used to cancel running animations for a target when
+     * a new animation is scheduled. Example: tapping a permanent that is still
+     * fading-in will cancel the fade animation and start the tap animation.
+     *
+     * Note: Animations register themselves during construction and deregister
+     * when finish() gets called.
+     */
+    private static final Map<UUID, Set<Animation>> activeByGameId = new HashMap<>();
+    private static final Map<Object, Animation> activeByTarget = new HashMap<>();
+
     private final Timer animationTimer;
     private FrameTimer frameTimer;
     private long elapsed;
     private boolean finished;
+    private final Object target;
+    private final UUID gameId;
 
-    public Animation(final long duration) {
-        this(duration, 0);
+    public Animation(UUID gameId, Object target, long duration) {
+        this(gameId, target, duration, 0);
     }
 
-    public Animation(long duration, long delay) {
+    public Animation(UUID gameId, Object target, long duration, long delay) {
+        this.target = target;
+        this.gameId = gameId;
+
         if (!ENABLED) {
             UI.invokeLater(() -> {
                 start();
@@ -63,6 +83,20 @@ public abstract class Animation {
                 finish();
             }
         });
+
+        cancelRunningAnimation(this.target);
+        if (this.target != null) {
+            activeByTarget.put(this.target, this);
+        }
+        if (this.gameId != null) {
+            Set<Animation> set = activeByGameId.getOrDefault(this.gameId, null);
+            if (set == null) {
+                set = new HashSet<Animation>();
+                activeByGameId.put(this.gameId, set);
+            }
+            set.add(this);
+        }
+
         animationTimer.setInitialDelay((int) Math.max(0, delay));
         animationTimer.start();
     }
@@ -84,6 +118,15 @@ public abstract class Animation {
             return;
         }
         finished = true;
+        if (target != null) {
+            activeByTarget.remove(target);
+        }
+        if (gameId != null) {
+            Set<Animation> set = activeByGameId.getOrDefault(gameId, null);
+            if (set != null) {
+                set.remove(this);
+            }
+        }
         if (animationTimer != null) {
             animationTimer.stop();
         }
@@ -135,11 +178,45 @@ public abstract class Animation {
         }
     }
 
+    /**
+     * Cancel all running animations associated with the given game id.
+     *
+     * @param gameId Game identifier.
+     */
+    public static void cancelRunningAnimations(UUID gameId) {
+        Set<Animation> animations = new HashSet<>(activeByGameId.getOrDefault(gameId, Collections.emptySet()));
+
+        // We need to iterate over a copy because the animations
+        // remove themselves from the original set.
+        for (Animation animation : animations) {
+            animation.cancel();
+        }
+        activeByGameId.remove(gameId);
+    }
+
+    /**
+     * Cancel running animations for the given target.
+     *
+     * Canceling a running animation directly calls the end/finish
+     * function (jumping to percentage 1.0) and marks the animation as complete.
+     *
+     * @param target Target key of the animation to cancel.
+     */
+    private static void cancelRunningAnimation(Object target) {
+        if (target == null)
+            return;
+
+        Animation running = activeByTarget.getOrDefault(target, null);
+        if (running != null) {
+            running.cancel();
+        }
+    }
+
     public static void tapCardToggle(final CardPanel source, final boolean tapped, final boolean flipped) {
         CardPanel mainPanel = source;
         MageCard parentPanel = mainPanel.getTopPanelRef();
 
-        new Animation(CARD_TAP_DURATION_MS) {
+        new Animation(mainPanel.gameId, parentPanel, CARD_TAP_DURATION_MS) {
             @Override
             protected void start() {
                 parentPanel.onBeginAnimation();
@@ -184,7 +261,7 @@ public abstract class Animation {
 
         CompletableFuture<Void> done = new CompletableFuture<Void>();
 
-        new Animation(TRANSFORM_CARD_DURATION_MS) {
+        new Animation(mainPanel.gameId, parentPanel, TRANSFORM_CARD_DURATION_MS) {
             private boolean state = false;
 
             @Override
@@ -247,7 +324,7 @@ public abstract class Animation {
                 layeredPane.setLayer(mainPanel, JLayeredPane.MODAL_LAYER);
             }
 
-            new Animation(700) {
+            new Animation(cardPanel.gameId, cardToAnimate, 700) {
                 @Override
                 protected void update(float percentage) {
                     float percent = percentage;
@@ -312,7 +389,7 @@ public abstract class Animation {
                 layeredPane.setLayer(mainPanel, JLayeredPane.MODAL_LAYER);
             }
 
-            new Animation(speed) {
+            new Animation(cardPanel.gameId, cardToAnimate, speed) {
                 @Override
                 protected void update(float percentage) {
                     int currentX = startX + Math.round((endX - startX) * percentage);
@@ -359,7 +436,7 @@ public abstract class Animation {
         final int endWidth = overPanel.getCardWidth();
         final int endHeight = Math.round(endWidth * CardPanel.ASPECT_RATIO);
 
-        new Animation(200) {
+        new Animation(animationPanel.gameId, animationPanel, 200) {
             @Override
             protected void update(float percentage) {
                 int currentWidth = startWidth + Math.round((endWidth - startWidth) * percentage);
@@ -405,7 +482,11 @@ public abstract class Animation {
 
         CompletableFuture<Void> done = new CompletableFuture<Void>();
 
-        new Animation(durationMs) {
+        UUID gameId = null;
+        if (card.getMainPanel() != null) {
+            gameId = ((CardPanel)card.getMainPanel()).gameId;
+        }
+        new Animation(gameId, card, durationMs) {
             @Override
             protected void start() {
                 card.setAlpha(from);
