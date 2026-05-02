@@ -2,6 +2,7 @@ package org.mage.card.arcane;
 
 import mage.cards.Card;
 import mage.cards.MageCard;
+import mage.util.ThreadUtils;
 
 import javax.swing.*;
 import javax.swing.Timer;
@@ -38,6 +39,7 @@ public abstract class Animation {
     private final Timer animationTimer;
     private FrameTimer frameTimer;
     private long elapsed;
+    private final long duration;
     private boolean finished;
     private final Object target;
     private final UUID gameId;
@@ -49,6 +51,7 @@ public abstract class Animation {
     public Animation(UUID gameId, Object target, long duration, long delay) {
         this.target = target;
         this.gameId = gameId;
+        this.duration = Math.max(1, duration);
 
         if (!ENABLED) {
             UI.invokeLater(() -> {
@@ -61,7 +64,6 @@ public abstract class Animation {
             return;
         }
 
-        final long safeDuration = Math.max(1, duration);
         animationTimer = new Timer((int) TARGET_MILLIS_PER_FRAME, e -> {
             if (finished) {
                 return;
@@ -73,13 +75,13 @@ public abstract class Animation {
             }
 
             elapsed += frameTimer.getTimeSinceLastFrame();
-            if (elapsed >= safeDuration) {
-                elapsed = safeDuration;
+            if (elapsed >= this.duration) {
+                elapsed = this.duration;
             }
 
-            update(elapsed / (float) safeDuration);
+            update(elapsed / (float) this.duration);
 
-            if (elapsed == safeDuration) {
+            if (elapsed == this.duration) {
                 finish();
             }
         });
@@ -104,6 +106,11 @@ public abstract class Animation {
     protected abstract void update(float percentage);
 
     protected void cancel() {
+        if (elapsed < duration && !finished) {
+            // Update to the final animation state if not already finished.
+            elapsed = duration;
+            update(1f);
+        }
         finish();
     }
 
@@ -184,6 +191,8 @@ public abstract class Animation {
      * @param gameId Game identifier.
      */
     public static void cancelRunningAnimations(UUID gameId) {
+        ThreadUtils.ensureRunInGUISwingThread();
+
         Set<Animation> animations = new HashSet<>(activeByGameId.getOrDefault(gameId, Collections.emptySet()));
 
         // We need to iterate over a copy because the animations
@@ -203,6 +212,8 @@ public abstract class Animation {
      * @param target Target key of the animation to cancel.
      */
     private static void cancelRunningAnimation(Object target) {
+        ThreadUtils.ensureRunInGUISwingThread();
+
         if (target == null)
             return;
 
