@@ -17,7 +17,9 @@
  import javax.swing.border.Border;
  import javax.swing.border.EmptyBorder;
  import java.awt.*;
+ import java.awt.geom.Point2D;
  import java.util.*;
+ import java.util.List;
 
  /**
   * GUI: panel for stack and hand zones, component for lookAt and reveal windows (CardInfoWindowDialog)
@@ -91,8 +93,7 @@
              mageCard.updateArtImage();
              mageCard.doLayout();
          }
-         layoutCards();
-         sizeCards(getCardDimension());
+         refreshLayout();
      }
 
      private void setGUISize() {
@@ -230,8 +231,9 @@
      }
 
      public void sizeCards(Dimension cardDimension) {
+         int visibleCards = countVisibleCards();
          cardArea.setPreferredSize(new Dimension(
-                 (int) ((cards.size()) * (cardDimension.getWidth() + MageActionCallback.getHandOrStackBetweenGapX(zone)))
+                 (int) ((visibleCards) * (cardDimension.getWidth() + MageActionCallback.getHandOrStackBetweenGapX(zone)))
                          + MageActionCallback.getHandOrStackMargins(zone).getWidth(),
                  (int) (cardDimension.getHeight())
                          + MageActionCallback.getHandOrStackMargins(zone).getHeight()
@@ -258,7 +260,7 @@
                  component.setBounds(0, 0, dimension.width, dimension.height);
              }
          }
-         layoutCards();
+         refreshLayout();
      }
 
      private void addCard(CardView card, BigCard bigCard, UUID gameId) {
@@ -315,6 +317,16 @@
          return cardArea.getComponentCount();
      }
 
+     private int countVisibleCards() {
+         int count = 0;
+         for (MageCard mageCard : cards.values()) {
+             if (mageCard.isVisible()) {
+                 count++;
+             }
+         }
+         return count;
+     }
+
      /**
       * This method is called from within the constructor to initialize the form.
       * WARNING: Do NOT modify this code. The content of this method is always
@@ -356,27 +368,81 @@
          }
      }
 
+     /**
+      * Compute the x,y offsets for a list of cards.
+      */
+     private List<Point> computeLocations(List<MageCard> cards) {
+         final boolean enableAlternatingY = true;
+
+         final int gapX = MageActionCallback.getHandOrStackBetweenGapX(zone);
+
+         List<Point> offsets = new ArrayList<>();
+
+         int index = 0;
+         int topOffsetX = 0;
+         int bottomOffsetX = 0;
+
+         for (MageCard card : cards) {
+             final boolean isEven = index % 2 == 0;
+
+             int offsetY = 0;
+             if (enableAlternatingY && !isEven) {
+                 offsetY = card.getCardLocation().getCardHeight() / 6;
+                 offsets.add(new Point(bottomOffsetX, offsetY));
+             } else {
+                 offsets.add(new Point(topOffsetX, offsetY));
+                 topOffsetX += gapX + card.getCardLocation().getCardWidth();
+             }
+
+             bottomOffsetX = topOffsetX - (gapX + card.getCardLocation().getCardWidth()) / 2;
+
+             index++;
+         }
+
+         return offsets;
+     }
+
      private void layoutCards() {
+         final boolean enableAlternatingY = true;
+
          // get all the card panels
          java.util.List<MageCard> cardsToLayout = new ArrayList<>();
          for (Component component : cardArea.getComponents()) {
-             if (component instanceof MageCard) {
+             if (component instanceof MageCard && component.isVisible()) {
                  cardsToLayout.add((MageCard) component);
              }
          }
 
          // WARNING, must be same sort code as MageActionCallback->sortLayout (if not then hand cards will be messed after drag)
-
          // sort the cards
          cardsToLayout.sort(Comparator.comparingInt(cp -> cp.getCardLocation().getCardX()));
 
-         // relocate the cards (support only horizontal style: hand and stack panels)
-         // TODO: add shrinking of cards list for too big amount (cards will be overlapped, use MageActionCallback.HAND_CARDS_BETWEEN_GAP_X to control it)
-         int dx = MageActionCallback.getHandOrStackBetweenGapX(zone); // starting position
+         // Compute card positions
+         List<Point> offsets = computeLocations(cardsToLayout);
+
+         int index = 0;
+         final int numCards = cardsToLayout.size();
+
+         // Apply computed positions and update z-order
          for (MageCard component : cardsToLayout) {
-             component.setCardLocation(dx, component.getCardLocation().getCardY());
-             dx += component.getCardLocation().getCardWidth() + MageActionCallback.getHandOrStackBetweenGapX(zone);
+             Point offset = offsets.get(index);
+             component.setCardLocation(offset.x, offset.y);
+
+             if (enableAlternatingY && index % 2 != 0) {
+                 cardArea.setComponentZOrder(component, numCards - index - 1);
+             } else {
+                 cardArea.setComponentZOrder(component, numCards - index / 2 - 1);
+             }
+
+             index++;
          }
+     }
+
+     public void refreshLayout() {
+         layoutCards();
+         sizeCards(getCardDimension());
+         revalidate();
+         repaint();
      }
 
      public void setZone(Zone zone) {

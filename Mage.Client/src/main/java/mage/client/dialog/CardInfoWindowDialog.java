@@ -1,11 +1,15 @@
 package mage.client.dialog;
 
 import java.awt.*;
+import java.awt.event.ActionEvent;
 import java.beans.PropertyVetoException;
 import java.util.*;
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
+import javax.swing.text.JTextComponent;
 
 import mage.cards.MageCard;
 import mage.client.cards.BigCard;
@@ -39,6 +43,9 @@ public class CardInfoWindowDialog extends MageDialog implements MageDesktopIconi
     private final ShowType showType;
     private boolean positioned;
     private final String name;
+    private JPanel header;
+    private JTextField filterField;
+    private JButton clearFilterButton;
 
     public CardInfoWindowDialog(ShowType showType, String name) {
         this.name = name;
@@ -136,6 +143,7 @@ public class CardInfoWindowDialog extends MageDialog implements MageDesktopIconi
     // TODO: remove oudated code with revertOrder (wait new release and delete if no bug reports for diff windows with cards, 2023-12-14)
     public void loadCardsAndShow(CardsView showCards, BigCard bigCard, UUID gameId, boolean revertOrder) {
         cards.loadCards(showCards, bigCard, gameId, revertOrder);
+        applyFilter();
 
         // additional info for grave windows
         if (showType == ShowType.GRAVEYARD) {
@@ -233,6 +241,32 @@ public class CardInfoWindowDialog extends MageDialog implements MageDesktopIconi
         }
     }
 
+    private void applyFilter() {
+        String filter = filterField.getText().trim().toLowerCase(Locale.ENGLISH);
+        final boolean isEmpty = filter.isEmpty();
+
+        for (MageCard card : cards.getMageCardsForUpdate().values()) {
+            CardView cardView = card.getOriginal();
+            String frontName = Objects.toString(cardView.getName(), "").toLowerCase(Locale.ENGLISH);
+            String backName = Objects.toString(cardView.getAlternateName(), "").toLowerCase(Locale.ENGLISH);
+
+            final boolean matches = isEmpty || frontName.contains(filter) || backName.contains(filter);
+            card.setVisible(matches);
+        }
+
+        cards.refreshLayout();
+
+        if (!isEmpty) {
+            filterField.setBackground(Color.yellow);
+        } else {
+            filterField.setBackground(Color.white);
+        }
+    }
+
+    private void onClearFilter(ActionEvent event) {
+        filterField.setText("");
+    }
+
     /**
      * This method is called from within the constructor to initialize the form.
      * WARNING: Do NOT modify this code. The content of this method is always
@@ -243,13 +277,42 @@ public class CardInfoWindowDialog extends MageDialog implements MageDesktopIconi
     private void initComponents() {
 
         cards = new mage.client.cards.Cards();
+        header = new JPanel();
+        filterField = new JTextField();
+        clearFilterButton = new JButton();
 
         setIconifiable(true);
         setResizable(true);
         setPreferredSize(new Dimension((int) Math.round(GUISizeHelper.otherZonesCardDimension.width * 1.4),
                 (int) Math.round(GUISizeHelper.otherZonesCardDimension.height * 1.4)));
         getContentPane().setLayout(new java.awt.BorderLayout());
+        getContentPane().add(header, BorderLayout.NORTH);
         getContentPane().add(cards, java.awt.BorderLayout.CENTER);
+
+        header.setLayout(new BorderLayout());
+        header.add(filterField, BorderLayout.CENTER);
+        header.add(clearFilterButton, BorderLayout.EAST);
+        filterField.setToolTipText("Filter Cards");
+        filterField.setColumns(10);
+        filterField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                applyFilter();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                applyFilter();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                applyFilter();
+            }
+        });
+        clearFilterButton.setText("x");
+        clearFilterButton.setToolTipText("Clear filter");
+        clearFilterButton.addActionListener(this::onClearFilter);
 
         pack();
     }// </editor-fold>//GEN-END:initComponents
